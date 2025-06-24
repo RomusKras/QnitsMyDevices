@@ -34,22 +34,60 @@ const App = () => {
   const [deviceName, setDeviceName] = useState<string>('');
   const [deviceModel, setDeviceModel] = useState<string>('Видеорегистратор'); // Инициализация значением по умолчанию
 
+  // Функция для загрузки устройств конкретного пользователя
+  const loadUserDevices = async (userEmail: string) => {
+    try {
+      const userDevicesKey = `devices_${userEmail}`; // Уникальный ключ для каждого пользователя
+      const savedDevices = await AsyncStorage.getItem(userDevicesKey);
+      const parsedDevices = savedDevices ? JSON.parse(savedDevices) : [];
+
+      // Добавляем изображения из IMAGE_MAP
+      const restoredDevices = parsedDevices.map((device: any) => ({
+        ...device,
+        image: IMAGE_MAP[device.imageKey] || null,
+      }));
+
+      setDevices(restoredDevices);
+    } catch (error) {
+      console.error('Ошибка при загрузке устройств пользователя:', error);
+      setDevices([]);
+    }
+  };
+  // Функция для сохранения устройств конкретного пользователя
+  const saveUserDevices = async (userEmail: string, devicesArray: Device[]) => {
+    try {
+      const userDevicesKey = `devices_${userEmail}`;
+      // Сохраняем устройства без поля image (только imageKey)
+      const devicesToSave = devicesArray.map(device => ({
+        id: device.id,
+        name: device.name,
+        model: device.model,
+        imageKey: device.imageKey,
+      }));
+      await AsyncStorage.setItem(userDevicesKey, JSON.stringify(devicesToSave));
+    } catch (error) {
+      console.error('Ошибка при сохранении устройств пользователя:', error);
+    }
+  };
 
   useEffect(() => {
     const getUser = async () => {
-      const savedUser = await AsyncStorage.getItem('user');
-      setUser(savedUser ? JSON.parse(savedUser) : null);
-
-      const savedDevices = await AsyncStorage.getItem('devices');
-      const parsedDevices = savedDevices ? JSON.parse(savedDevices) : [];
-      // Добавляем изображение из IMAGE_MAP по ключу imageKey
-      const restoredDevices = parsedDevices.map((device: any) => ({
-        ...device,
-        image: IMAGE_MAP[device.imageKey] || null, // Получаем путь к изображению
-      }));
-      setDevices(restoredDevices);
+      try {
+        const savedUser = await AsyncStorage.getItem('user');
+        if (savedUser) {
+          const userData = JSON.parse(savedUser);
+          setUser(userData);
+          await loadUserDevices(userData.email);
+        } else {
+          setUser(null);
+          setDevices([]);
+        }
+      } catch (error) {
+        console.error('Ошибка при загрузке пользователя:', error);
+        setUser(null);
+        setDevices([]);
+      }
     };
-
     getUser();
   }, []);
 
@@ -58,39 +96,70 @@ const App = () => {
       Alert.alert('Ошибка', 'Пожалуйста, заполните все поля.');
       return;
     }
-    const userData = { name: regName, email: regEmail };
-    await AsyncStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
+
+    try {
+      const userData = { name: regName, email: regEmail };
+      await AsyncStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+
+      // Загружаем устройства для этого пользователя (могут быть пустыми, если новый пользователь)
+      await loadUserDevices(regEmail);
+    } catch (error) {
+      console.error('Ошибка при регистрации:', error);
+      Alert.alert('Ошибка', 'Не удалось зарегистрировать пользователя.');
+    }
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem('user');
-    setUser(null);
-    setDevices([]);
-    setDeviceName('');
-    setDeviceModel('Видеорегистратор');
+    try {
+      await AsyncStorage.removeItem('user');
+      setUser(null);
+      setDevices([]);
+      setDeviceName('');
+      setDeviceModel('Видеорегистратор');
+    } catch (error) {
+      console.error('Ошибка при выходе из аккаунта:', error);
+    }
   };
 
   const handleAddDevice = async ({ name, model }: NewDeviceData) => {
-    const newDevice = {
-      id: Date.now().toString(),
-      name: name,
-      model: model,
-      imageKey: name, // Сохраняем ключ для извлечения из IMAGE_MAP
-    };
-    const updatedDevices = [...devices, newDevice];
-    const restoredDevices = updatedDevices.map((device: any) => ({
-      ...device,
-      image: IMAGE_MAP[device.imageKey] || null, // Получаем путь к изображению
-    }));
-    setDevices(restoredDevices);
-    await AsyncStorage.setItem('devices', JSON.stringify(updatedDevices));
+    if (!user) return;
+    try {
+      const newDevice = {
+        id: Date.now().toString(),
+        name: name,
+        model: model,
+        imageKey: name,
+      };
+      const updatedDevices = [...devices, newDevice];
+
+      // Добавляем изображения для отображения в UI
+      const restoredDevices = updatedDevices.map((device: any) => ({
+        ...device,
+        image: IMAGE_MAP[device.imageKey] || null,
+      }));
+      setDevices(restoredDevices);
+
+      // Сохраняем устройства для текущего пользователя
+      await saveUserDevices(user.email, updatedDevices);
+    } catch (error) {
+      console.error('Ошибка при добавлении устройства:', error);
+      Alert.alert('Ошибка', 'Не удалось добавить устройство.');
+    }
   };
 
   const handleDeleteDevice = async (id: string) => {
-    const updatedDevices = devices.filter((device) => device.id !== id);
-    setDevices(updatedDevices);
-    await AsyncStorage.setItem('devices', JSON.stringify(updatedDevices));
+    if (!user) return;
+    try {
+      const updatedDevices = devices.filter((device) => device.id !== id);
+      setDevices(updatedDevices);
+
+      // Сохраняем обновленный список устройств для текущего пользователя
+      await saveUserDevices(user.email, updatedDevices);
+    } catch (error) {
+      console.error('Ошибка при удалении устройства:', error);
+      Alert.alert('Ошибка', 'Не удалось удалить устройство.');
+    }
   };
 
   if (!user) {
