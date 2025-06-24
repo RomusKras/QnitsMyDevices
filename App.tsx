@@ -8,7 +8,8 @@ import DevicesScreen from './screens/DevicesScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import { Alert } from 'react-native';
 import RegistrationScreen from './screens/RegistrationScreen';
-import TabIcon from './components/TabIcon'; // Убедитесь, что путь правильный
+import TabIcon from './components/TabIcon';
+import { IMAGE_MAP } from './src/data/models';
 
 const Tab = createBottomTabNavigator();
 
@@ -20,7 +21,7 @@ interface Device {
   id: string;
   name: string;
   model: string;
-  icon: string;
+  imageKey: string;
 }
 interface NewDeviceData {
   name: string;
@@ -38,9 +39,17 @@ const App = () => {
     const getUser = async () => {
       const savedUser = await AsyncStorage.getItem('user');
       setUser(savedUser ? JSON.parse(savedUser) : null);
+
       const savedDevices = await AsyncStorage.getItem('devices');
-      setDevices(savedDevices ? JSON.parse(savedDevices) : []);
+      const parsedDevices = savedDevices ? JSON.parse(savedDevices) : [];
+      // Добавляем изображение из IMAGE_MAP по ключу imageKey
+      const restoredDevices = parsedDevices.map((device: any) => ({
+        ...device,
+        image: IMAGE_MAP[device.imageKey] || null, // Получаем путь к изображению
+      }));
+      setDevices(restoredDevices);
     };
+
     getUser();
   }, []);
 
@@ -67,12 +76,14 @@ const App = () => {
       id: Date.now().toString(),
       name: name,
       model: model,
-      icon:
-        model.toLowerCase().includes('видеорегистратор') ? '📷' :
-          model.toLowerCase().includes('радар-детектор') ? '🛡️' : '📱',
+      imageKey: name, // Сохраняем ключ для извлечения из IMAGE_MAP
     };
     const updatedDevices = [...devices, newDevice];
-    setDevices(updatedDevices);
+    const restoredDevices = updatedDevices.map((device: any) => ({
+      ...device,
+      image: IMAGE_MAP[device.imageKey] || null, // Получаем путь к изображению
+    }));
+    setDevices(restoredDevices);
     await AsyncStorage.setItem('devices', JSON.stringify(updatedDevices));
   };
 
